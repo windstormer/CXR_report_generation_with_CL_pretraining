@@ -68,13 +68,13 @@ if __name__ == '__main__':
     parser.add_argument("--patch_size",
                         "-p",
                         type=int,
-                        default=224,
+                        default=256,
                         help="image size")
 
     parser.add_argument("--epochs",
                         "-e",
                         type=int,
-                        default=250,
+                        default=500,
                         help="number of epoch")
 
     parser.add_argument("--batch_size",
@@ -138,7 +138,3 @@ if __name__ == '__main__':
             torch.save(model.state_dict(), os.path.join(record_path, model_name, "model", "encoder_{}.pth".format(epoch)))
     save_chart(args.epochs, record['train_loss'], record['val_loss'], os.path.join(record_path, model_name, "loss.png"), name='loss')
     
-
-        
-        
-

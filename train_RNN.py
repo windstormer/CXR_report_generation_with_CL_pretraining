@@ -7,7 +7,6 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import torch.optim as optim
 from datetime import datetime
-# from preprocess import *
 from dataset import *
 from model import *
 import matplotlib
@@ -31,14 +30,12 @@ def train(cnet, dnet, train_loader, optimizer, strategy):
     for case_id, img, caption, _, length in train_bar:
         img, caption = img.cuda(), caption.cuda()
         targets = caption.flatten()
-        # targets = pack_padded_sequence(tcaption[:, 1:], length, batch_first=True).data
+        
         features = cnet(img)
         outputs = dnet(features, caption, length)
         
         loss = criterion(outputs, targets)
-        # print(torch.argmax(torch.nn.functional.softmax(outputs, 1), dim=1))
-        # print(targets)
-        # print(checkword(4, train_loader))
+        
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -58,7 +55,7 @@ def val(cnet, dnet, val_loader, model_name, epoch):
     with torch.no_grad():
         for case_id, img, caption, _, length in val_bar:
             img, caption = img.cuda(), caption.cuda()
-            # targets = pack_padded_sequence(tcaption[:, 1:], length, batch_first=True).data
+            
             targets = caption.flatten()
             features = cnet(img)
             outputs = dnet(features, caption, length)
@@ -81,7 +78,7 @@ def test(cnet, dnet, test_loader, model_name, epoch):
     with torch.no_grad():
         for case_id, img, caption, _, length in test_bar:
             img, caption = img.cuda(), caption.cuda()
-            # targets = pack_padded_sequence(tcaption[:, 1:], length, batch_first=True).data
+            
             targets = caption.flatten()
             features = cnet(img)
             outputs = dnet(features, caption, length)
@@ -92,9 +89,6 @@ def test(cnet, dnet, test_loader, model_name, epoch):
             test_bar.set_description('Test Epoch: [{}/{}] Loss: {:.4f}'.format(epoch, args.epochs, total_loss / total_num))
         
     return total_loss / total_num
-
-        # print('out:', outputs)
-        # print('true:', tcaption.cpu().tolist())
 
 def test_write_output(args, cnet, dnet, result_loader, result_path, model_name, epoch, tokenizer):
     cnet.eval()
@@ -153,13 +147,13 @@ if __name__ == '__main__':
     parser.add_argument("--patch_size",
                         "-p",
                         type=int,
-                        default=224,
+                        default=256,
                         help="image size")
 
     parser.add_argument("--epochs",
                         "-e",
                         type=int,
-                        default=500,
+                        default=400,
                         help="number of epoch")
 
     parser.add_argument("--batch_size",
@@ -234,7 +228,7 @@ if __name__ == '__main__':
     if (args.pretrain == None) or (args.pretrain == "Imagenet"):
         pretrain_path = args.pretrain
     else:
-        pretrain_path = os.path.join(record_path, args.pretrain, "model", "encoder_250.pth")
+        pretrain_path = os.path.join(record_path, args.pretrain, "model", "encoder_500.pth")
 
     cnet = EncoderCNN(pretrain_path, encoder_type).cuda()
 
@@ -247,9 +241,7 @@ if __name__ == '__main__':
 
     num_vocab = len(tokenizer.token2idx)+1
     print("num_vocab", num_vocab)
-    dnet = DecoderRNN(2048, 128, num_vocab, args.cell_type).cuda()
-    # for param in cnet.parameters():
-    #     param.requires_grad = False
+    dnet = DecoderRNN(2048, 256, num_vocab, args.cell_type).cuda()
 
     if args.strategy == "freeze":
         optimizer = optim.Adam(dnet.parameters(), lr=1e-3, weight_decay=1e-6)
@@ -257,13 +249,11 @@ if __name__ == '__main__':
             param.requires_grad = False
     else:
         optimizer = optim.Adam(list(cnet.parameters())+list(dnet.parameters()), lr=1e-3, weight_decay=1e-6)
-    # scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-5, last_epoch=-1)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=int(args.epochs/2), gamma=0.1)
-    # optimizer = optim.Adam(model.parameters(), lr=1e-3)
+
 
     print("============== Start Training ===============")
     # training loop
-    best_test_loss = np.inf
     record = {'train_loss':[], 'val_loss':[]}
     for epoch in range(1, args.epochs + 1):
         train_loss = train(cnet, dnet, train_loader, optimizer, args.strategy)
@@ -281,11 +271,8 @@ if __name__ == '__main__':
             log_file = open(full_log_path,"a")
             log_file.writelines("Epoch {:4d}/{:4d} | Test Loss: {}\n".format(epoch, args.epochs, test_loss))
             test_write_output(args, cnet, dnet, test_loader, result_path, model_name, epoch, tokenizer)
-            if test_loss < best_test_loss:
-                best_test_loss = test_loss
-                log_file.writelines("Save model at Epoch {:4d}/{:4d} | Test Loss: {}\n".format(epoch, args.epochs, test_loss))
-                
-                torch.save(cnet.state_dict(), os.path.join(record_path, model_name, "model", "encoder_{}.pth".format(epoch)))
-                torch.save(dnet.state_dict(), os.path.join(record_path, model_name, "model", "decoder_{}.pth".format(epoch)))
+            log_file.writelines("Save model at Epoch {:4d}/{:4d} | Test Loss: {}\n".format(epoch, args.epochs, test_loss))
+            torch.save(cnet.state_dict(), os.path.join(record_path, model_name, "model", "encoder_{}.pth".format(epoch)))
+            torch.save(dnet.state_dict(), os.path.join(record_path, model_name, "model", "decoder_{}.pth".format(epoch)))
             log_file.close()
     save_chart(args.epochs, record['train_loss'], record['val_loss'], os.path.join(record_path, model_name, "loss.png"), name='loss')

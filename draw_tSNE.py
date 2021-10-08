@@ -29,7 +29,7 @@ if __name__ == '__main__':
     parser.add_argument("--patch_size",
                         "-p",
                         type=int,
-                        default=224,
+                        default=256,
                         help="image size")
 
     parser.add_argument("--batch_size",

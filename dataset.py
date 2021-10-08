@@ -63,7 +63,12 @@ Image.MAX_IMAGE_PIXELS = 933120000
 class SSLTrainDataset(Dataset):
     def __init__(self, args, split):
         self.annotation = json.loads(open(os.path.join(args.dataset_path, 'annotation.json'), 'r').read())
+        # if split == 'train':
+        #     self.cases = self.annotation['train'] + self.annotation['val'] + self.annotation['test']
+        # else:
+        #     self.cases = self.annotation[split]
         self.cases = self.annotation[split]
+        # print("cases", len(self.annotation['train']), len(self.annotation['val']), len(self.annotation['test']))
         self.data = []
         for cases in self.cases:
             self.data.append(os.path.join(args.dataset_path, 'images', cases['image_path'][0]))
@@ -71,7 +76,7 @@ class SSLTrainDataset(Dataset):
 
         if split == 'train':
             self.transform = transforms.Compose([
-            transforms.Resize(256),
+            transforms.Resize((args.patch_size, args.patch_size)),
             transforms.RandomResizedCrop(args.patch_size),
             transforms.RandomHorizontalFlip(p=0.5),
             # transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
@@ -84,9 +89,22 @@ class SSLTrainDataset(Dataset):
 
     def __getitem__(self, index):
         img = self.data[index]
-        x = Image.open(img).convert('RGB')
+        # image = cv2.imread(img, cv2.IMREAD_GRAYSCALE)
+        # h_pad = 512 - image.shape[0]
+        # w_pad = 512 - image.shape[1]
+        # if h_pad < 0:
+        #     h_pad = 0
+        # if w_pad < 0:
+        #     w_pad = 0
+        # image = cv2.copyMakeBorder(image, 0, h_pad, 0, w_pad, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+        # image = image[(image.shape[0]-512)//2:(image.shape[0]+512)//2, (image.shape[1]-512)//2:(image.shape[1]+512)//2]
+        # x = Image.fromarray(image)
+        x = Image.open(img)
+        # x = np.asarray(x)
+        # print(x.shape)
         pos_1 = self.transform(x)
         pos_2 = self.transform(x)
+        # return (pos_1.repeat(3, 1, 1)-0.5)/0.5, (pos_2.repeat(3, 1, 1)-0.5)/0.5
         return (pos_1-0.5)/0.5, (pos_2-0.5)/0.5
     
     def __len__(self):
@@ -103,7 +121,7 @@ class TrainDataset(Dataset):
 
         if split == 'train':
             self.transform = transforms.Compose([
-            transforms.Resize(256),
+            transforms.Resize((args.patch_size, args.patch_size)),
             transforms.RandomResizedCrop(args.patch_size),
             transforms.RandomHorizontalFlip(p=0.5),
             # transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
@@ -116,8 +134,21 @@ class TrainDataset(Dataset):
 
     def __getitem__(self, index):
         img = self.data[index]
-        x = Image.open(img).convert('RGB')
+        # image = cv2.imread(img, cv2.IMREAD_GRAYSCALE)
+        # h_pad = 512 - image.shape[0]
+        # w_pad = 512 - image.shape[1]
+        # if h_pad < 0:
+        #     h_pad = 0
+        # if w_pad < 0:
+        #     w_pad = 0
+        # image = cv2.copyMakeBorder(image, 0, h_pad, 0, w_pad, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+        # image = image[(image.shape[0]-512)//2:(image.shape[0]+512)//2, (image.shape[1]-512)//2:(image.shape[1]+512)//2]
+        # x = Image.fromarray(image)
+        x = Image.open(img)
+        # x = np.asarray(x)
+        # print(x.shape)
         img = self.transform(x)
+        # return (img.repeat(3, 1, 1)-0.5)/0.5
         return (img-0.5)/0.5
     
     def __len__(self):
@@ -138,26 +169,39 @@ class RNNDataset(Dataset):
             self.caption.append(tokenizer(cases['report'])[:args.max_seq_length])
             self.caption.append(tokenizer(cases['report'])[:args.max_seq_length])
 
-        if split == 'train':
-            self.transform = transforms.Compose([
-            transforms.Resize(256),
-            transforms.RandomResizedCrop(args.patch_size),
-            transforms.RandomHorizontalFlip(p=0.5),
-            # transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
-            # transforms.RandomGrayscale(p=0.2),
-            transforms.ToTensor()])
-        else:
-            self.transform = transforms.Compose([
-            transforms.Resize((args.patch_size, args.patch_size)),
-            transforms.ToTensor()])
+        # if split == 'train':
+        #     self.transform = transforms.Compose([
+        #     transforms.Resize((args.patch_size, args.patch_size)),
+        #     transforms.RandomResizedCrop(args.patch_size),
+        #     transforms.RandomHorizontalFlip(p=0.5),
+        #     # transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+        #     # transforms.RandomGrayscale(p=0.2),
+        #     transforms.ToTensor()])
+        # else:
+        self.transform = transforms.Compose([
+        transforms.Resize((args.patch_size, args.patch_size)),
+        transforms.ToTensor()])
 
     def __getitem__(self, index):
         
         img = self.data[index]
-        x = Image.open(img).convert('RGB')
+        # image = cv2.imread(img, cv2.IMREAD_GRAYSCALE)
+        # h_pad = 512 - image.shape[0]
+        # w_pad = 512 - image.shape[1]
+        # if h_pad < 0:
+        #     h_pad = 0
+        # if w_pad < 0:
+        #     w_pad = 0
+        # image = cv2.copyMakeBorder(image, 0, h_pad, 0, w_pad, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+        # image = image[(image.shape[0]-512)//2:(image.shape[0]+512)//2, (image.shape[1]-512)//2:(image.shape[1]+512)//2]
+        # x = Image.fromarray(image)
+        x = Image.open(img)
+        # x = np.asarray(x)
+        # print(x.shape)
         img = self.transform(x)
         case_id = self.id[index]
         caption = self.caption[index]
+        # return case_id, (img.repeat(3, 1, 1)-0.5)/0.5, caption
         return case_id, (img-0.5)/0.5, caption
     
     def __len__(self):
