@@ -159,7 +159,7 @@ if __name__ == '__main__':
     parser.add_argument("--batch_size",
                         "-b",
                         type=int,
-                        default=32,
+                        default=64,
                         help="batch size")          
 
     parser.add_argument("--suffix",
@@ -239,7 +239,7 @@ if __name__ == '__main__':
     test_dataset = RNNDataset(args, 'test', tokenizer)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=16, pin_memory=True, drop_last=False, collate_fn=collate_fn)
 
-    num_vocab = len(tokenizer.token2idx)+1
+    num_vocab = len(tokenizer.token2idx)+1 # add index 0
     print("num_vocab", num_vocab)
     dnet = DecoderRNN(2048, 256, num_vocab, args.cell_type).cuda()
 
