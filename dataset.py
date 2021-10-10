@@ -11,6 +11,70 @@ from tokenizers import *
 
 Image.MAX_IMAGE_PIXELS = 933120000
 
+class SegSSLTrainDataset(Dataset):
+    def __init__(self, args, split):
+        self.annotation = json.loads(open(os.path.join(args.dataset_path, 'annotation.json'), 'r').read())
+        # if split == 'train':
+        #     self.cases = self.annotation['train'] + self.annotation['val'] + self.annotation['test']
+        # else:
+        #     self.cases = self.annotation[split]
+        self.cases = self.annotation[split]
+        self.split = split
+        # print("cases", len(self.annotation['train']), len(self.annotation['val']), len(self.annotation['test']))
+        self.data = []
+        self.seg = []
+        for cases in self.cases:
+            self.data.append(os.path.join(args.dataset_path, 'images', cases['image_path'][0]))
+            self.data.append(os.path.join(args.dataset_path, 'images', cases['image_path'][1]))
+            self.seg.append(os.path.join(args.dataset_path, 'seg', cases['image_path'][0]))
+            self.seg.append(os.path.join(args.dataset_path, 'seg', cases['image_path'][1]))
+
+        if split == 'train':
+            self.transform = transforms.Compose([
+            transforms.Resize((args.patch_size, args.patch_size)),
+            transforms.RandomResizedCrop(args.patch_size),
+            transforms.RandomHorizontalFlip(p=0.5),
+            # transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+            # transforms.RandomGrayscale(p=0.2),
+            transforms.ToTensor()])
+        else:
+            self.transform = transforms.Compose([
+            transforms.Resize((args.patch_size, args.patch_size)),
+            transforms.ToTensor()])
+
+    def __getitem__(self, index):
+        img = self.data[index]
+        seg = self.seg[index]
+        x = Image.open(img)
+        seg_img = Image.open(seg)
+        seed = np.random.randint(2147483647)
+        random.seed(seed)
+        torch.manual_seed(seed)
+        pos_1 = self.transform(x)
+        if self.split == 'train':
+            seg_seed = np.random.randint(100)
+            if seg_seed < 50:
+                random.seed(seed)
+                torch.manual_seed(seed)
+                seg_1 = self.transform(seg_img)
+                pos_1 = seg_1 * pos_1
+
+        seed = np.random.randint(2147483647)
+        random.seed(seed)
+        torch.manual_seed(seed)
+        pos_2 = self.transform(x)
+        if self.split == 'train':
+            seg_seed = np.random.randint(100)
+            if seg_seed < 50:
+                random.seed(seed)
+                torch.manual_seed(seed)
+                seg_2 = self.transform(seg_img)
+                pos_2 = seg_2 * pos_2
+        return (pos_1-0.5)/0.5, (pos_2-0.5)/0.5
+    
+    def __len__(self):
+        return len(self.data)
+
 # class AttSSLTrainDataset(Dataset):
 #     def __init__(self, data, patch_size, seg):
 #         self.data = data
@@ -89,22 +153,9 @@ class SSLTrainDataset(Dataset):
 
     def __getitem__(self, index):
         img = self.data[index]
-        # image = cv2.imread(img, cv2.IMREAD_GRAYSCALE)
-        # h_pad = 512 - image.shape[0]
-        # w_pad = 512 - image.shape[1]
-        # if h_pad < 0:
-        #     h_pad = 0
-        # if w_pad < 0:
-        #     w_pad = 0
-        # image = cv2.copyMakeBorder(image, 0, h_pad, 0, w_pad, cv2.BORDER_CONSTANT, value=(0, 0, 0))
-        # image = image[(image.shape[0]-512)//2:(image.shape[0]+512)//2, (image.shape[1]-512)//2:(image.shape[1]+512)//2]
-        # x = Image.fromarray(image)
         x = Image.open(img)
-        # x = np.asarray(x)
-        # print(x.shape)
         pos_1 = self.transform(x)
         pos_2 = self.transform(x)
-        # return (pos_1.repeat(3, 1, 1)-0.5)/0.5, (pos_2.repeat(3, 1, 1)-0.5)/0.5
         return (pos_1-0.5)/0.5, (pos_2-0.5)/0.5
     
     def __len__(self):

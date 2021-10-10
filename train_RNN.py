@@ -153,7 +153,7 @@ if __name__ == '__main__':
     parser.add_argument("--epochs",
                         "-e",
                         type=int,
-                        default=400,
+                        default=200,
                         help="number of epoch")
 
     parser.add_argument("--batch_size",
@@ -203,10 +203,13 @@ if __name__ == '__main__':
     if args.pretrain == "Imagenet":
         model_name = "Imagenet_{}_p{}_ep{}_b{}_{}".format(args.cell_type, args.patch_size, args.epochs, args.batch_size, args.strategy)
     elif args.pretrain == None:
-        model_name = "{}_{}_p{}_ep{}_b{}.scratch".format(encoder_type, args.cell_type, args.patch_size, args.epochs, args.batch_size)
+        model_name = "{}_{}_p{}_ep{}_b{}_scratch".format(encoder_type, args.cell_type, args.patch_size, args.epochs, args.batch_size)
     else:
         encoder_type = args.pretrain.split("_")[0]
         model_name = "{}_{}_p{}_ep{}_b{}_{}".format(encoder_type, args.cell_type, args.patch_size, args.epochs, args.batch_size, args.strategy)
+    
+    if encoder_type == 'SegSSL':
+        encoder_type = 'SSL'
 
     if args.suffix != None:
         model_name = model_name + ".{}".format(args.suffix)
@@ -249,7 +252,8 @@ if __name__ == '__main__':
             param.requires_grad = False
     else:
         optimizer = optim.Adam(list(cnet.parameters())+list(dnet.parameters()), lr=1e-3, weight_decay=1e-6)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=int(args.epochs/2), gamma=0.1)
+    # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=int(args.epochs/2), gamma=0.1)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-5, last_epoch=-1)
 
 
     print("============== Start Training ===============")
