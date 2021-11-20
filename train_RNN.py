@@ -208,7 +208,7 @@ if __name__ == '__main__':
         encoder_type = args.pretrain.split("_")[0]
         model_name = "{}_{}_p{}_ep{}_b{}_{}".format(encoder_type, args.cell_type, args.patch_size, args.epochs, args.batch_size, args.strategy)
     
-    if encoder_type == 'SegSSL':
+    if encoder_type == 'SegSSL' or encoder_type == 'Tag':
         encoder_type = 'SSL'
 
     if args.suffix != None:
