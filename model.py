@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models.resnet import resnet50
 from torch.nn.utils.rnn import pack_padded_sequence
+from collections import OrderedDict
 
 class Model(nn.Module):
     def __init__(self, feature_dim=128, pretrained=False):
@@ -85,15 +86,27 @@ class EncoderCNN(nn.Module):
                 self.f = AutoEncoder(pretrained=True).f
                 self.f.add_module("AdaptiveAvgPool2d", nn.AdaptiveAvgPool2d(output_size=(1, 1)))
         else:
-            if model_type == 'SSL':
+            if model_type == 'SSL' or model_type == 'Moco':
                 self.f = Model().f
             elif model_type == 'AE':
                 self.f = AutoEncoder().f
                 self.f.add_module("AdaptiveAvgPool2d", nn.AdaptiveAvgPool2d(output_size=(1, 1)))
 
             if pretrained_path != None:
-                self.load_state_dict(torch.load(pretrained_path, map_location='cpu'), strict=False)
-
+                # self.load_state_dict(torch.load(pretrained_path, map_location='cpu'), strict=False)
+                print("Model restore from", pretrained_path)
+                state_dict_weights = torch.load(pretrained_path)
+                state_dict_init = self.state_dict()
+                filtered_dict = OrderedDict()
+                for (k, v) in state_dict_weights.items():
+                    if "f." in k:
+                        filtered_dict[k] = v
+                new_state_dict = OrderedDict()
+                for (k, v), (k_0, v_0) in zip(filtered_dict.items(), state_dict_init.items()):
+                    name = k_0
+                    new_state_dict[name] = v
+                    print(k, k_0)
+                self.load_state_dict(new_state_dict, strict=False)
     def forward(self, images):
         features = self.f(images)
         features = features.view(features.size(0), -1)

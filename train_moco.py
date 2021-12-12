@@ -10,33 +10,20 @@ import cv2
 
 from utils import *
 from dataset import *
-from model import Model
 from loss import *
-from skimage import io
-from skimage import img_as_ubyte
+from moco import *
+import torch.distributed as dist
 # from preprocess import *
 
-def train(args, epoch, net, data_loader, train_optimizer, record_path):
+def train(args, epoch, criterion, net, data_loader, train_optimizer):
     net.train()
     train_bar = tqdm(data_loader)
     total_loss, total_num = 0.0, 0
-    visual_flag = True
     for pos_1, pos_2 in train_bar:
-        pos_1, pos_2 = pos_1, pos_2
-        feature_1, out_1 = net(pos_1)
-        feature_2, out_2 = net(pos_2)
+        pos_1, pos_2 = pos_1.cuda(non_blocking=True), pos_2.cuda(non_blocking=True)
+        output, target = net(pos_1, pos_2)
 
-        if visual_flag:
-            img1 = ((pos_1+1)/2).permute(0, 2, 3, 1).detach().numpy()
-            img2 = ((pos_2+1)/2).permute(0, 2, 3, 1).detach().numpy()
-            if not os.path.exists(os.path.join(record_path, "augment_image")):
-                os.makedirs(os.path.join(record_path, "augment_image"))
-            for i in range(args.batch_size):
-                io.imsave(os.path.join(record_path, "augment_image", "{}_1.png".format(i)), img_as_ubyte(img1[i, :, :, 0]), check_contrast=False)
-                io.imsave(os.path.join(record_path, "augment_image", "{}_2.png".format(i)), img_as_ubyte(img2[i, :, :, 0]), check_contrast=False)
-            visual_flag = False
-
-        loss = NTXent(out_1, out_2, args.batch_size, device=out_1.device)
+        loss = criterion(output, target)
         train_optimizer.zero_grad()
         loss.backward()
         train_optimizer.step()
@@ -47,17 +34,16 @@ def train(args, epoch, net, data_loader, train_optimizer, record_path):
 
     return total_loss / total_num
 
-def val(args, epoch, net, data_loader):
+def val(args, epoch, criterion, net, data_loader):
     net.eval()
     val_bar = tqdm(data_loader)
     total_loss, total_num = 0.0, 0
     with torch.no_grad():
         for pos_1, pos_2 in val_bar:
             pos_1, pos_2 = pos_1.cuda(non_blocking=True), pos_2.cuda(non_blocking=True)
-            feature_1, out_1 = net(pos_1)
-            feature_2, out_2 = net(pos_2)
+            output, target = net(pos_1, pos_2)
 
-            loss = NTXent(out_1, out_2, pos_1.shape[0], device=out_1.device)
+            loss = criterion(output, target)
 
             total_num += args.batch_size
             total_loss += loss.item() * args.batch_size
@@ -104,12 +90,15 @@ if __name__ == '__main__':
     
     # args parse
     args = parser.parse_args()
-    if args.gpu_id != '':
-        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
+    gpu_id = args.gpu_id
+    if gpu_id == '':
+        gpu_id = ",".join([str(g) for g in np.arange(torch.cuda.device_count())])
+    gpuid = range(len(gpu_id.split(",")))
+    print("Use {} GPU".format(len(gpu_id.split(","))))
 
     record_path = "../record"
     
-    model_name = "SSL_p{}_ep{}_b{}".format(args.patch_size, args.epochs, args.batch_size)    
+    model_name = "Moco_p{}_ep{}_b{}".format(args.patch_size, args.epochs, args.batch_size)    
 
     if args.suffix != None:
         model_name = model_name + ".{}".format(args.suffix)
@@ -123,26 +112,33 @@ if __name__ == '__main__':
     log_file.writelines(str(datetime.now())+"\n")
     log_file.close()
 
+
     print("============== Load Dataset ===============")
     train_dataset = SSLTrainDataset(args, 'train')
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=16, pin_memory=True, drop_last=True)
     val_dataset = SSLTrainDataset(args, 'val')
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=16, pin_memory=True, drop_last=False)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=16, pin_memory=True, drop_last=True)
     print("Total images:", len(train_dataset))
     # del image
     print("============== Model Setup ===============")
     # model setup and optimizer config
-    model = Model(args.feature_dim)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-6)
+    model = MoCo()
+    model = torch.nn.parallel.DataParallel(model, device_ids=gpuid)
+    model.cuda()
+    # optimizer = optim.Adam(model.parameters(), lr=0.03, weight_decay=1e-4)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.015,
+                                momentum=0.9,
+                                weight_decay=1e-6)
+    criterion = nn.CrossEntropyLoss()
     # optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
     print("============== Start Training ===============")
     # training loop
     record = {'train_loss':[], 'val_loss':[]}
     for epoch in range(1, args.epochs + 1):
-        train_loss = train(args, epoch, model, train_loader, optimizer, os.path.join(record_path, model_name))
+        train_loss = train(args, epoch, criterion, model, train_loader, optimizer)
         record['train_loss'].append(train_loss)
-        val_loss = val(args, epoch, model, val_loader)
+        val_loss = val(args, epoch, criterion, model, val_loader)
         record['val_loss'].append(val_loss)
         log_file = open(full_log_path,"a")
         log_file.writelines("Epoch {:4d}/{:4d} | Train Loss: {:.5f} | Val Loss: {:.5f}\n".format(epoch, args.epochs, train_loss, val_loss))
